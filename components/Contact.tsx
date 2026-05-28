@@ -19,8 +19,8 @@ const socials = [
   {
     icon: <Briefcase size={18} />,
     label: "LinkedIn",
-    href: "https://linkedin.com/",
-    value: "linkedin.com/in/julianmendiola",
+    href: "https://linkedin.com/in/julian-mendiola-151418239",
+    value: "linkedin.com/in/julian-mendiola-151418239",
   },
   {
     icon: <MessageCircle size={18} />,
