@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   motion,
   useMotionValue,
@@ -23,7 +23,57 @@ import {
   ChromaticAberration,
   Noise,
 } from "@react-three/postprocessing";
+import { Volume2, VolumeX } from "lucide-react";
 import * as THREE from "three";
+
+function scrollToProjects() {
+  document.getElementById("projects")?.scrollIntoView({ behavior: "smooth" });
+}
+
+/* Wrapper que hace clickeable una estación: hover = leve zoom + cursor.
+ * El doble group hace que el escalado quede centrado en la estación. */
+function Clickable({
+  onActivate,
+  center = [0, 0, 0],
+  children,
+}: {
+  onActivate: () => void;
+  center?: [number, number, number];
+  children: ReactNode;
+}) {
+  const root = useRef<THREE.Group>(null);
+  const hovered = useRef(false);
+
+  useFrame(() => {
+    if (!root.current) return;
+    const target = hovered.current ? 1.07 : 1;
+    root.current.scale.setScalar(
+      THREE.MathUtils.lerp(root.current.scale.x, target, 0.08)
+    );
+  });
+
+  return (
+    <group
+      ref={root}
+      position={center}
+      onClick={(e) => {
+        e.stopPropagation();
+        onActivate();
+      }}
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        hovered.current = true;
+        document.body.style.cursor = "pointer";
+      }}
+      onPointerOut={() => {
+        hovered.current = false;
+        document.body.style.cursor = "auto";
+      }}
+    >
+      <group position={[-center[0], -center[1], -center[2]]}>{children}</group>
+    </group>
+  );
+}
 
 /* ---------------------------------------------------------------------------
  * Recorrido: la cámara viaja entre 3 estaciones (una por proyecto) separadas
@@ -634,9 +684,19 @@ function Scene({
       <FloatingTitle text="TALLERPRO" x={0} color="#a78bfa" />
       <FloatingTitle text="ORION" x={STATION_GAP} color="#67e8f9" />
       <FloatingTitle text="TRADINGBOT" x={STATION_GAP * 2} color="#fbbf24" />
-      <TallerStation />
-      <OrionStation asteroids={lite ? 45 : 90} />
-      <TradingStation progress={progress} />
+      <Clickable
+        onActivate={() =>
+          window.open("https://taller-pro-rouge.vercel.app", "_blank", "noopener")
+        }
+      >
+        <TallerStation />
+      </Clickable>
+      <Clickable onActivate={scrollToProjects} center={[STATION_GAP, 0, 0]}>
+        <OrionStation asteroids={lite ? 45 : 90} />
+      </Clickable>
+      <Clickable onActivate={scrollToProjects} center={[STATION_GAP * 2, 0, 0]}>
+        <TradingStation progress={progress} />
+      </Clickable>
       <EffectComposer>
         <Bloom
           intensity={1.15}
@@ -659,6 +719,7 @@ type Chapter = {
   status: string;
   description: string;
   tags: string;
+  hint: string;
   accent: string;
   chipClass: string;
   side: "left" | "right";
@@ -673,6 +734,7 @@ const CHAPTERS: Chapter[] = [
     description:
       "Gestión completa para un taller mecánico real: órdenes de trabajo, clientes, vehículos y caja diaria.",
     tags: "Next.js · TypeScript · Supabase",
+    hint: "Click en los engranajes para abrir la app ↗",
     accent: "text-violet-400",
     chipClass: "text-violet-300 bg-violet-400/10 border-violet-400/25",
     side: "left",
@@ -685,6 +747,7 @@ const CHAPTERS: Chapter[] = [
     description:
       "Inteligencia financiera con IA para el inversor argentino: mercados en vivo, señales y backtesting.",
     tags: "React · Node.js · Claude AI",
+    hint: "Click en el planeta para ver más ↓",
     accent: "text-cyan-400",
     chipClass: "text-cyan-300 bg-cyan-400/10 border-cyan-400/25",
     side: "right",
@@ -697,6 +760,7 @@ const CHAPTERS: Chapter[] = [
     description:
       "Trading algorítmico en Python: tres estrategias, gestión de riesgo automática y dashboard propio.",
     tags: "Python · Estrategias · Paper trading",
+    hint: "Click en el gráfico para ver más ↓",
     accent: "text-amber-400",
     chipClass: "text-amber-300 bg-amber-400/10 border-amber-400/25",
     side: "left",
@@ -757,7 +821,159 @@ function ChapterOverlay({
       <p className={`text-xs font-mono ${chapter.accent} opacity-80`}>
         {chapter.tags}
       </p>
+      <p className="text-[11px] text-white/35 mt-3">{chapter.hint}</p>
     </motion.div>
+  );
+}
+
+/* ------------------------- HUD de velocidad (warp) ------------------------ */
+
+function WarpHUD({ progress }: { progress: MotionValue<number> }) {
+  const opacity = useTransform(progress, (v) => warpAmount(v));
+  const speedRef = useRef<HTMLSpanElement>(null);
+  const destRef = useRef<HTMLSpanElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const update = (v: number) => {
+      const w = warpAmount(v);
+      const s = stationCoord(v);
+      if (speedRef.current)
+        speedRef.current.textContent = (w * 9.9).toFixed(1);
+      if (destRef.current)
+        destRef.current.textContent = s <= 1 ? "ORION" : "TRADINGBOT";
+      if (barRef.current)
+        barRef.current.style.width = `${(s <= 1 ? s : s - 1) * 100}%`;
+    };
+    update(progress.get());
+    return progress.on("change", update);
+  }, [progress]);
+
+  return (
+    <motion.div
+      style={{ opacity }}
+      className="absolute bottom-10 left-6 md:left-10 font-mono pointer-events-none select-none"
+    >
+      <div className="border-l-2 border-cyan-400/60 pl-3">
+        <p className="text-[10px] text-white/40 tracking-[0.3em] uppercase mb-1">
+          Modo warp
+        </p>
+        <p className="text-3xl text-white leading-none">
+          <span ref={speedRef}>0.0</span>
+          <span className="text-white/40 text-sm"> ×c</span>
+        </p>
+        <p className="text-[10px] text-white/40 tracking-widest mt-2">
+          DESTINO → <span ref={destRef} className="text-cyan-300" />
+        </p>
+        <div className="mt-2 h-0.5 w-36 bg-white/10 overflow-hidden rounded-full">
+          <div ref={barRef} className="h-full bg-cyan-400" style={{ width: 0 }} />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+/* --------------------- Sonido ambiental (Web Audio API) ------------------- */
+
+type AudioRig = {
+  ctx: AudioContext;
+  noiseGain: GainNode;
+  noiseFilter: BiquadFilterNode;
+};
+
+function AmbientSound({ progress }: { progress: MotionValue<number> }) {
+  const [on, setOn] = useState(false);
+  const rig = useRef<AudioRig | null>(null);
+
+  const toggle = () => {
+    if (!rig.current) {
+      const ctx = new AudioContext();
+      const master = ctx.createGain();
+      master.gain.value = 0.12;
+      master.connect(ctx.destination);
+
+      // drone grave de nave: dos osciladores desafinados + lowpass + LFO
+      const o1 = ctx.createOscillator();
+      o1.type = "sine";
+      o1.frequency.value = 55;
+      const o2 = ctx.createOscillator();
+      o2.type = "triangle";
+      o2.frequency.value = 110.7;
+      const droneFilter = ctx.createBiquadFilter();
+      droneFilter.type = "lowpass";
+      droneFilter.frequency.value = 220;
+      const droneGain = ctx.createGain();
+      droneGain.gain.value = 0.5;
+      o1.connect(droneFilter);
+      o2.connect(droneFilter);
+      droneFilter.connect(droneGain);
+      droneGain.connect(master);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.08;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 0.18;
+      lfo.connect(lfoGain);
+      lfoGain.connect(droneGain.gain);
+
+      // viento espacial: ruido blanco por bandpass, se intensifica en warp
+      const len = ctx.sampleRate * 2;
+      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = buf;
+      noise.loop = true;
+      const noiseFilter = ctx.createBiquadFilter();
+      noiseFilter.type = "bandpass";
+      noiseFilter.frequency.value = 320;
+      noiseFilter.Q.value = 0.8;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.03;
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(master);
+
+      o1.start();
+      o2.start();
+      lfo.start();
+      noise.start();
+      rig.current = { ctx, noiseGain, noiseFilter };
+      setOn(true);
+    } else if (on) {
+      rig.current.ctx.suspend();
+      setOn(false);
+    } else {
+      rig.current.ctx.resume();
+      setOn(true);
+    }
+  };
+
+  useEffect(() => {
+    return progress.on("change", (v) => {
+      const a = rig.current;
+      if (!a) return;
+      const w = warpAmount(v);
+      a.noiseGain.gain.value = 0.03 + w * 0.14;
+      a.noiseFilter.frequency.value = 320 + w * 1400;
+    });
+  }, [progress]);
+
+  useEffect(() => {
+    const r = rig;
+    return () => {
+      r.current?.ctx.close();
+    };
+  }, []);
+
+  return (
+    <button
+      onClick={toggle}
+      aria-label={on ? "Silenciar sonido ambiental" : "Activar sonido ambiental"}
+      className="absolute top-24 right-4 md:right-8 flex items-center gap-2 text-xs text-white/50 hover:text-white transition-colors border border-white/10 hover:border-white/30 rounded-full px-3.5 py-2 bg-white/[0.04] backdrop-blur-sm"
+    >
+      {on ? <Volume2 size={14} /> : <VolumeX size={14} />}
+      <span className="hidden md:inline">{on ? "Sonido on" : "Sonido"}</span>
+    </button>
   );
 }
 
@@ -846,6 +1062,10 @@ export default function Showcase3D() {
             progress={scrollYProgress}
           />
         ))}
+
+        {/* HUD de velocidad durante el warp + toggle de sonido */}
+        <WarpHUD progress={scrollYProgress} />
+        <AmbientSound progress={scrollYProgress} />
 
         {/* riel de progreso */}
         <div className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-0 pointer-events-none">
