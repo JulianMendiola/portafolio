@@ -15,6 +15,7 @@ import {
   Line,
   Instances,
   Instance,
+  Text,
 } from "@react-three/drei";
 import {
   EffectComposer,
@@ -57,18 +58,36 @@ function CameraRig({ progress }: { progress: MotionValue<number> }) {
     const f = s <= 1 ? s : s - 1;
     const travel = Math.sin(f * Math.PI);
     const t = clock.elapsedTime;
+    // plano final: la cámara se retira y revela las tres estaciones juntas
+    const reveal = smoothstep((p - 0.84) / 0.13);
 
-    camera.position.x =
-      s * STATION_GAP + Math.sin(t * 0.3) * 0.15 + pointer.x * 0.5;
-    camera.position.y =
-      1.1 + travel * 1.5 + Math.sin(t * 0.5) * 0.08 + pointer.y * 0.35;
-    camera.position.z = 7.5 - travel * 2.4;
-    camera.lookAt(s * STATION_GAP, 0.2, 0);
+    const shake = travel * 0.07;
+    const baseX =
+      s * STATION_GAP +
+      Math.sin(t * 0.3) * 0.15 +
+      pointer.x * 0.5 +
+      Math.sin(t * 13.7) * shake;
+    const baseY =
+      1.1 +
+      travel * 1.5 +
+      Math.sin(t * 0.5) * 0.08 +
+      pointer.y * 0.35 +
+      Math.sin(t * 17.3) * shake;
+    const baseZ = 7.5 - travel * 2.4;
+
+    camera.position.x = THREE.MathUtils.lerp(baseX, STATION_GAP, reveal);
+    camera.position.y = THREE.MathUtils.lerp(baseY, 6, reveal);
+    camera.position.z = THREE.MathUtils.lerp(baseZ, 26, reveal);
+    camera.lookAt(
+      THREE.MathUtils.lerp(s * STATION_GAP, STATION_GAP, reveal),
+      THREE.MathUtils.lerp(0.2, 0.8, reveal),
+      0
+    );
 
     // roll de banking durante el viaje + golpe de FOV estilo hipervelocidad
     camera.rotateZ(travel * 0.3 * Math.sin(f * Math.PI * 2));
     const cam = camera as THREE.PerspectiveCamera;
-    cam.fov = 50 + travel * 22;
+    cam.fov = 50 + travel * 22 + reveal * 10;
     cam.updateProjectionMatrix();
   });
   return null;
@@ -76,22 +95,26 @@ function CameraRig({ progress }: { progress: MotionValue<number> }) {
 
 /* ------------------------- Warp: líneas de velocidad ---------------------- */
 
-const WARP_COUNT = 140;
-
-function WarpLines({ progress }: { progress: MotionValue<number> }) {
+function WarpLines({
+  progress,
+  count,
+}: {
+  progress: MotionValue<number>;
+  count: number;
+}) {
   const mesh = useRef<THREE.InstancedMesh>(null);
   const mat = useRef<THREE.MeshBasicMaterial>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const seeds = useMemo(
     () =>
-      Array.from({ length: WARP_COUNT }, () => ({
+      Array.from({ length: count }, () => ({
         y: (Math.random() - 0.5) * 18,
         z: (Math.random() - 0.5) * 18,
         x: Math.random() * 60,
         speed: 20 + Math.random() * 30,
         len: 1.5 + Math.random() * 3,
       })),
-    []
+    [count]
   );
 
   useFrame(({ clock, camera }) => {
@@ -110,7 +133,7 @@ function WarpLines({ progress }: { progress: MotionValue<number> }) {
   });
 
   return (
-    <instancedMesh ref={mesh} args={[undefined, undefined, WARP_COUNT]}>
+    <instancedMesh key={count} ref={mesh} args={[undefined, undefined, count]}>
       <boxGeometry args={[1, 1, 1]} />
       <meshBasicMaterial
         ref={mat}
@@ -310,11 +333,11 @@ function TallerStation() {
 
 /* ----------------------------- Estación 02: Orion ------------------------- */
 
-function AsteroidBelt() {
+function AsteroidBelt({ count }: { count: number }) {
   const belt = useRef<THREE.Group>(null);
   const rocks = useMemo(
     () =>
-      Array.from({ length: 90 }, () => {
+      Array.from({ length: count }, () => {
         const a = Math.random() * Math.PI * 2;
         const r = 3.4 + Math.random() * 1.3;
         return {
@@ -327,7 +350,7 @@ function AsteroidBelt() {
           rot: [Math.random() * Math.PI, a, 0] as [number, number, number],
         };
       }),
-    []
+    [count]
   );
 
   useFrame(({ clock }) => {
@@ -336,7 +359,7 @@ function AsteroidBelt() {
 
   return (
     <group ref={belt} rotation={[0.45, 0, 0.15]}>
-      <Instances limit={90}>
+      <Instances key={count} limit={count}>
         <dodecahedronGeometry args={[1, 0]} />
         <meshStandardMaterial
           color="#155e75"
@@ -352,7 +375,7 @@ function AsteroidBelt() {
   );
 }
 
-function OrionStation() {
+function OrionStation({ asteroids }: { asteroids: number }) {
   const planet = useRef<THREE.Mesh>(null);
   const rings = useRef<THREE.Group>(null);
   const moon = useRef<THREE.Mesh>(null);
@@ -417,7 +440,7 @@ function OrionStation() {
           />
         </mesh>
       </Trail>
-      <AsteroidBelt />
+      <AsteroidBelt count={asteroids} />
       <pointLight
         position={[2, 3, 4]}
         intensity={55}
@@ -523,20 +546,96 @@ function TradingStation({ progress }: { progress: MotionValue<number> }) {
   );
 }
 
+/* ----------------------- Atmósfera: nebulosas y títulos ------------------- */
+
+function useGlowTexture() {
+  return useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, "rgba(255,255,255,0.8)");
+    g.addColorStop(0.4, "rgba(255,255,255,0.25)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 256);
+    return new THREE.CanvasTexture(c);
+  }, []);
+}
+
+function Nebula({ x, color }: { x: number; color: string }) {
+  const map = useGlowTexture();
+  return (
+    <sprite position={[x, 1.2, -7]} scale={[18, 12, 1]}>
+      <spriteMaterial
+        map={map}
+        color={color}
+        transparent
+        opacity={0.22}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </sprite>
+  );
+}
+
+function FloatingTitle({
+  text,
+  x,
+  color,
+}: {
+  text: string;
+  x: number;
+  color: string;
+}) {
+  return (
+    <Text
+      position={[x, 3.2, -4.5]}
+      fontSize={1.9}
+      color={color}
+      fillOpacity={0.13}
+      letterSpacing={0.12}
+      anchorX="center"
+      anchorY="middle"
+    >
+      {text}
+    </Text>
+  );
+}
+
 /* --------------------------------- Escena --------------------------------- */
 
-function Scene({ progress }: { progress: MotionValue<number> }) {
+function Scene({
+  progress,
+  lite,
+}: {
+  progress: MotionValue<number>;
+  lite: boolean;
+}) {
   return (
     <>
-      <fog attach="fog" args={["#07070f", 13, 42]} />
+      <fog attach="fog" args={["#07070f", 13, 55]} />
       <ambientLight intensity={0.3} />
-      <Stars radius={90} depth={50} count={3000} factor={4} saturation={0} fade />
+      <Stars
+        radius={90}
+        depth={50}
+        count={lite ? 1800 : 3000}
+        factor={4}
+        saturation={0}
+        fade
+      />
       <CameraRig progress={progress} />
-      <WarpLines progress={progress} />
+      <WarpLines progress={progress} count={lite ? 70 : 140} />
       <GateRings x={STATION_GAP * 0.5} color="#22d3ee" />
       <GateRings x={STATION_GAP * 1.5} color="#fbbf24" />
+      <Nebula x={0} color="#8b5cf6" />
+      <Nebula x={STATION_GAP} color="#06b6d4" />
+      <Nebula x={STATION_GAP * 2} color="#f59e0b" />
+      <FloatingTitle text="TALLERPRO" x={0} color="#a78bfa" />
+      <FloatingTitle text="ORION" x={STATION_GAP} color="#67e8f9" />
+      <FloatingTitle text="TRADINGBOT" x={STATION_GAP * 2} color="#fbbf24" />
       <TallerStation />
-      <OrionStation />
+      <OrionStation asteroids={lite ? 45 : 90} />
       <TradingStation progress={progress} />
       <EffectComposer>
         <Bloom
@@ -601,7 +700,7 @@ const CHAPTERS: Chapter[] = [
     accent: "text-amber-400",
     chipClass: "text-amber-300 bg-amber-400/10 border-amber-400/25",
     side: "left",
-    range: [0.7, 0.77, 1, 1],
+    range: [0.7, 0.76, 0.8, 0.86],
   },
 ];
 
@@ -667,6 +766,7 @@ function ChapterOverlay({
 export default function Showcase3D() {
   const sectionRef = useRef<HTMLElement>(null);
   const [mounted, setMounted] = useState(false);
+  const [lite, setLite] = useState(false);
 
   // Progreso de scroll medido a mano con rAF: useScroll de framer cachea la
   // posición de la sección y queda desfasado si el layout cambia después de
@@ -675,6 +775,7 @@ export default function Showcase3D() {
 
   useEffect(() => {
     setMounted(true);
+    setLite(window.innerWidth < 768);
     let raf = 0;
     const loop = () => {
       const el = sectionRef.current;
@@ -691,7 +792,8 @@ export default function Showcase3D() {
   }, [scrollYProgress]);
 
   const hintOpacity = useTransform(scrollYProgress, [0.03, 0.1], [1, 0]);
-  const ctaOpacity = useTransform(scrollYProgress, [0.88, 0.96], [0, 1]);
+  const finaleOpacity = useTransform(scrollYProgress, [0.9, 0.96], [0, 1]);
+  const finaleY = useTransform(scrollYProgress, [0.9, 0.98], [30, 0]);
   const railScale = scrollYProgress;
   // tinte ambiental que acompaña la estación actual
   const wash = useTransform(
@@ -706,11 +808,11 @@ export default function Showcase3D() {
         {mounted && (
           <Canvas
             camera={{ position: [0, 1.1, 7.5], fov: 50 }}
-            dpr={[1, 1.5]}
+            dpr={lite ? [1, 1.2] : [1, 1.5]}
             gl={{ antialias: true, alpha: true }}
             className="absolute inset-0"
           >
-            <Scene progress={scrollYProgress} />
+            <Scene progress={scrollYProgress} lite={lite} />
           </Canvas>
         )}
 
@@ -755,14 +857,20 @@ export default function Showcase3D() {
           </div>
         </div>
 
-        {/* CTA final */}
+        {/* final: plano abierto con las tres estaciones + tagline */}
         <motion.div
-          style={{ opacity: ctaOpacity }}
-          className="absolute bottom-10 inset-x-0 text-center"
+          style={{ opacity: finaleOpacity, y: finaleY }}
+          className="absolute bottom-12 inset-x-0 text-center px-6"
         >
+          <p className="text-3xl md:text-5xl font-bold text-white mb-3">
+            Tres productos reales.
+          </p>
+          <p className="text-white/50 text-sm md:text-base mb-7">
+            Construidos con IA, resolviendo problemas concretos.
+          </p>
           <a
             href="#projects"
-            className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors border border-white/10 hover:border-white/25 rounded-full px-5 py-2.5 bg-white/[0.03]"
+            className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors border border-white/15 hover:border-white/35 rounded-full px-6 py-3 bg-white/[0.04]"
           >
             Ver detalles de cada proyecto ↓
           </a>
