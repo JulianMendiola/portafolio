@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   motion,
   useMotionValue,
@@ -8,13 +8,28 @@ import {
   type MotionValue,
 } from "framer-motion";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Stars, Sparkles } from "@react-three/drei";
+import {
+  Stars,
+  Sparkles,
+  Trail,
+  Line,
+  Instances,
+  Instance,
+} from "@react-three/drei";
+import {
+  EffectComposer,
+  Bloom,
+  ChromaticAberration,
+  Noise,
+} from "@react-three/postprocessing";
 import * as THREE from "three";
 
 /* ---------------------------------------------------------------------------
  * Recorrido: la cámara viaja entre 3 estaciones (una por proyecto) separadas
  * STATION_GAP unidades en X. stationCoord mapea el progreso de scroll [0,1]
  * a una coordenada continua de estación [0,2] con pausas en cada una.
+ * Durante el viaje se activa el "modo warp": FOV abierto, roll de cámara,
+ * líneas de velocidad y portales de anillos.
  * ------------------------------------------------------------------------- */
 
 const STATION_GAP = 14;
@@ -25,25 +40,119 @@ function smoothstep(x: number) {
 }
 
 function stationCoord(p: number) {
-  return (
-    smoothstep((p - 0.26) / 0.14) + smoothstep((p - 0.6) / 0.14)
-  );
+  return smoothstep((p - 0.26) / 0.14) + smoothstep((p - 0.6) / 0.14);
+}
+
+// intensidad del warp: 0 en estaciones, 1 en pleno viaje
+function warpAmount(p: number) {
+  const s = stationCoord(p);
+  const f = s <= 1 ? s : s - 1;
+  return Math.sin(f * Math.PI);
 }
 
 function CameraRig({ progress }: { progress: MotionValue<number> }) {
-  useFrame(({ camera, clock }) => {
+  useFrame(({ camera, clock, pointer }) => {
     const p = progress.get();
     const s = stationCoord(p);
-    const f = s <= 1 ? s : s - 1; // fase del viaje dentro del segmento actual
-    const lift = Math.sin(f * Math.PI);
+    const f = s <= 1 ? s : s - 1;
+    const travel = Math.sin(f * Math.PI);
     const t = clock.elapsedTime;
 
-    camera.position.x = s * STATION_GAP + Math.sin(t * 0.3) * 0.15;
-    camera.position.y = 1.1 + lift * 1.5 + Math.sin(t * 0.5) * 0.08;
-    camera.position.z = 7.5 - lift * 2.2;
+    camera.position.x =
+      s * STATION_GAP + Math.sin(t * 0.3) * 0.15 + pointer.x * 0.5;
+    camera.position.y =
+      1.1 + travel * 1.5 + Math.sin(t * 0.5) * 0.08 + pointer.y * 0.35;
+    camera.position.z = 7.5 - travel * 2.4;
     camera.lookAt(s * STATION_GAP, 0.2, 0);
+
+    // roll de banking durante el viaje + golpe de FOV estilo hipervelocidad
+    camera.rotateZ(travel * 0.3 * Math.sin(f * Math.PI * 2));
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.fov = 50 + travel * 22;
+    cam.updateProjectionMatrix();
   });
   return null;
+}
+
+/* ------------------------- Warp: líneas de velocidad ---------------------- */
+
+const WARP_COUNT = 140;
+
+function WarpLines({ progress }: { progress: MotionValue<number> }) {
+  const mesh = useRef<THREE.InstancedMesh>(null);
+  const mat = useRef<THREE.MeshBasicMaterial>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const seeds = useMemo(
+    () =>
+      Array.from({ length: WARP_COUNT }, () => ({
+        y: (Math.random() - 0.5) * 18,
+        z: (Math.random() - 0.5) * 18,
+        x: Math.random() * 60,
+        speed: 20 + Math.random() * 30,
+        len: 1.5 + Math.random() * 3,
+      })),
+    []
+  );
+
+  useFrame(({ clock, camera }) => {
+    const travel = warpAmount(progress.get());
+    if (mat.current) mat.current.opacity = travel * 0.85;
+    if (!mesh.current) return;
+    const t = clock.elapsedTime;
+    seeds.forEach((sd, i) => {
+      const cycle = (((sd.x - t * sd.speed) % 60) + 60) % 60;
+      dummy.position.set(camera.position.x + cycle - 30, sd.y, sd.z);
+      dummy.scale.set(sd.len * (1 + travel * 4), 0.025, 0.025);
+      dummy.updateMatrix();
+      mesh.current!.setMatrixAt(i, dummy.matrix);
+    });
+    mesh.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={mesh} args={[undefined, undefined, WARP_COUNT]}>
+      <boxGeometry args={[1, 1, 1]} />
+      <meshBasicMaterial
+        ref={mat}
+        color="#b4a5ff"
+        transparent
+        opacity={0}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </instancedMesh>
+  );
+}
+
+/* -------------------- Portales de anillos entre estaciones ---------------- */
+
+function GateRings({ x, color }: { x: number; color: string }) {
+  const group = useRef<THREE.Group>(null);
+
+  useFrame(({ clock }) => {
+    if (!group.current) return;
+    group.current.children.forEach((ring, i) => {
+      ring.rotation.z = clock.elapsedTime * (0.4 + i * 0.2) * (i % 2 ? 1 : -1);
+    });
+  });
+
+  // la cámara pasa por (x, ~2.4, ~5.2) en pleno viaje: los anillos la rodean
+  return (
+    <group ref={group} position={[x, 2.4, 5.2]} rotation={[0, Math.PI / 2, 0]}>
+      {[3.0, 3.8, 4.6].map((r, i) => (
+        <mesh key={i} position={[0, 0, (i - 1) * 2.2]}>
+          <torusGeometry args={[r, 0.07, 6, 8]} />
+          <meshStandardMaterial
+            color={color}
+            emissive={color}
+            emissiveIntensity={2.4}
+            transparent
+            opacity={0.9}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
 }
 
 /* --------------------------- Estación 01: TallerPro ----------------------- */
@@ -66,7 +175,7 @@ function Gear({
         <meshStandardMaterial
           color={color}
           emissive={emissive}
-          emissiveIntensity={0.25}
+          emissiveIntensity={0.6}
           metalness={0.85}
           roughness={0.3}
         />
@@ -93,8 +202,14 @@ function Gear({
         );
       })}
       <mesh>
-        <cylinderGeometry args={[radius * 0.3, radius * 0.3, radius * 0.4, 24]} />
-        <meshStandardMaterial color="#1a1a2e" metalness={0.9} roughness={0.25} />
+        <cylinderGeometry
+          args={[radius * 0.3, radius * 0.3, radius * 0.4, 24]}
+        />
+        <meshStandardMaterial
+          color="#1a1a2e"
+          metalness={0.9}
+          roughness={0.25}
+        />
       </mesh>
     </group>
   );
@@ -103,13 +218,17 @@ function Gear({
 function TallerStation() {
   const main = useRef<THREE.Group>(null);
   const small = useRef<THREE.Group>(null);
+  const back = useRef<THREE.Group>(null);
   const bolts = useRef<THREE.Group>(null);
+  const piston = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
     const t = clock.elapsedTime;
     if (main.current) main.current.rotation.z = t * 0.25;
     if (small.current) small.current.rotation.z = -t * 0.45 + 0.3;
+    if (back.current) back.current.rotation.z = t * 0.18 + 1.2;
     if (bolts.current) bolts.current.rotation.z = -t * 0.08;
+    if (piston.current) piston.current.position.y = -1.3 + Math.sin(t * 2.4) * 0.45;
   });
 
   return (
@@ -117,21 +236,60 @@ function TallerStation() {
       <group ref={main} rotation={[0.15, -0.25, 0]}>
         <Gear color="#7c5cf0" emissive="#8b5cf6" />
       </group>
-      <group ref={small} position={[2.6, 1.8, -0.5]} scale={0.5} rotation={[0.15, -0.25, 0]}>
+      <group
+        ref={small}
+        position={[2.6, 1.8, -0.5]}
+        scale={0.5}
+        rotation={[0.15, -0.25, 0]}
+      >
         <Gear color="#5b48b8" emissive="#8b5cf6" teeth={8} />
       </group>
+      <group
+        ref={back}
+        position={[-2.9, 1.2, -2.2]}
+        scale={0.8}
+        rotation={[0.3, 0.4, 0]}
+      >
+        <Gear color="#4c3d99" emissive="#7c3aed" teeth={12} />
+      </group>
+
+      {/* pistón en tubo de vidrio */}
+      <group position={[-2.7, -1.0, 0.6]}>
+        <mesh>
+          <cylinderGeometry args={[0.5, 0.5, 2.4, 24, 1, true]} />
+          <meshStandardMaterial
+            color="#a78bfa"
+            transparent
+            opacity={0.12}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh ref={piston} position={[0, -1.3, 0]}>
+          <cylinderGeometry args={[0.38, 0.38, 0.6, 24]} />
+          <meshStandardMaterial
+            color="#8b5cf6"
+            emissive="#8b5cf6"
+            emissiveIntensity={1.4}
+            metalness={0.7}
+            roughness={0.3}
+          />
+        </mesh>
+      </group>
+
       <group ref={bolts}>
         {Array.from({ length: 6 }).map((_, i) => {
           const a = (i / 6) * Math.PI * 2;
           return (
             <mesh
               key={i}
-              position={[Math.cos(a) * 3.4, Math.sin(a) * 3.4, -0.8]}
+              position={[Math.cos(a) * 3.6, Math.sin(a) * 3.6, -0.8]}
               rotation={[Math.PI / 2, 0, 0]}
             >
               <cylinderGeometry args={[0.15, 0.15, 0.12, 6]} />
               <meshStandardMaterial
                 color="#6d5bd0"
+                emissive="#8b5cf6"
+                emissiveIntensity={0.8}
                 metalness={0.9}
                 roughness={0.3}
               />
@@ -139,13 +297,60 @@ function TallerStation() {
           );
         })}
       </group>
-      <pointLight position={[2, 3, 3]} intensity={50} distance={14} color="#8b5cf6" />
-      <Sparkles count={40} scale={[9, 5, 5]} size={2} speed={0.3} color="#a78bfa" />
+      <pointLight
+        position={[2, 3, 3]}
+        intensity={50}
+        distance={14}
+        color="#8b5cf6"
+      />
+      <Sparkles count={50} scale={[10, 6, 6]} size={2.5} speed={0.3} color="#a78bfa" />
     </group>
   );
 }
 
 /* ----------------------------- Estación 02: Orion ------------------------- */
+
+function AsteroidBelt() {
+  const belt = useRef<THREE.Group>(null);
+  const rocks = useMemo(
+    () =>
+      Array.from({ length: 90 }, () => {
+        const a = Math.random() * Math.PI * 2;
+        const r = 3.4 + Math.random() * 1.3;
+        return {
+          pos: [Math.cos(a) * r, (Math.random() - 0.5) * 0.55, Math.sin(a) * r] as [
+            number,
+            number,
+            number
+          ],
+          scale: 0.05 + Math.random() * 0.15,
+          rot: [Math.random() * Math.PI, a, 0] as [number, number, number],
+        };
+      }),
+    []
+  );
+
+  useFrame(({ clock }) => {
+    if (belt.current) belt.current.rotation.y = clock.elapsedTime * 0.05;
+  });
+
+  return (
+    <group ref={belt} rotation={[0.45, 0, 0.15]}>
+      <Instances limit={90}>
+        <dodecahedronGeometry args={[1, 0]} />
+        <meshStandardMaterial
+          color="#155e75"
+          emissive="#0891b2"
+          emissiveIntensity={0.5}
+          roughness={0.7}
+        />
+        {rocks.map((r, i) => (
+          <Instance key={i} position={r.pos} scale={r.scale} rotation={r.rot} />
+        ))}
+      </Instances>
+    </group>
+  );
+}
 
 function OrionStation() {
   const planet = useRef<THREE.Mesh>(null);
@@ -157,9 +362,9 @@ function OrionStation() {
     if (planet.current) planet.current.rotation.y = t * 0.15;
     if (rings.current) rings.current.rotation.z = t * 0.05;
     if (moon.current) {
-      moon.current.position.x = Math.cos(t * 0.4) * 2.7;
-      moon.current.position.z = Math.sin(t * 0.4) * 2.7;
-      moon.current.position.y = Math.sin(t * 0.4) * 0.5;
+      moon.current.position.x = Math.cos(t * 0.55) * 2.9;
+      moon.current.position.z = Math.sin(t * 0.55) * 2.9;
+      moon.current.position.y = Math.sin(t * 0.55) * 0.6;
     }
   });
 
@@ -170,7 +375,7 @@ function OrionStation() {
         <meshStandardMaterial
           color="#0b3a4a"
           emissive="#06b6d4"
-          emissiveIntensity={0.35}
+          emissiveIntensity={0.5}
           metalness={0.3}
           roughness={0.55}
         />
@@ -181,9 +386,9 @@ function OrionStation() {
           <meshStandardMaterial
             color="#22d3ee"
             emissive="#22d3ee"
-            emissiveIntensity={0.8}
+            emissiveIntensity={2.2}
             transparent
-            opacity={0.75}
+            opacity={0.8}
           />
         </mesh>
         <mesh>
@@ -191,22 +396,35 @@ function OrionStation() {
           <meshStandardMaterial
             color="#67e8f9"
             emissive="#67e8f9"
-            emissiveIntensity={0.6}
+            emissiveIntensity={1.6}
             transparent
-            opacity={0.45}
+            opacity={0.5}
           />
         </mesh>
       </group>
-      <mesh ref={moon}>
-        <sphereGeometry args={[0.22, 24, 24]} />
-        <meshStandardMaterial
-          color="#a5f3fc"
-          emissive="#67e8f9"
-          emissiveIntensity={0.7}
-        />
-      </mesh>
-      <pointLight position={[2, 3, 4]} intensity={55} distance={15} color="#06b6d4" />
-      <Sparkles count={60} scale={[10, 6, 6]} size={2.5} speed={0.25} color="#67e8f9" />
+      <Trail
+        width={1.6}
+        length={7}
+        color="#67e8f9"
+        attenuation={(w) => w * w}
+      >
+        <mesh ref={moon}>
+          <sphereGeometry args={[0.22, 24, 24]} />
+          <meshStandardMaterial
+            color="#a5f3fc"
+            emissive="#67e8f9"
+            emissiveIntensity={2.5}
+          />
+        </mesh>
+      </Trail>
+      <AsteroidBelt />
+      <pointLight
+        position={[2, 3, 4]}
+        intensity={55}
+        distance={15}
+        color="#06b6d4"
+      />
+      <Sparkles count={70} scale={[11, 7, 7]} size={2.5} speed={0.25} color="#67e8f9" />
     </group>
   );
 }
@@ -220,18 +438,31 @@ const CANDLES: [number, number][] = [
   [2.4, 3.0], [3.0, 3.45], [3.45, 3.2], [3.2, 3.8],
 ];
 
-function TradingStation() {
-  const group = useRef<THREE.Group>(null);
+const PRICE_POINTS = CANDLES.map(
+  ([, close], i) =>
+    new THREE.Vector3((i - (CANDLES.length - 1) / 2) * 0.52, close, 0.25)
+);
+
+function TradingStation({ progress }: { progress: MotionValue<number> }) {
+  const sway = useRef<THREE.Group>(null);
+  const candles = useRef<(THREE.Group | null)[]>([]);
 
   useFrame(({ clock }) => {
-    if (group.current) {
-      group.current.rotation.y = Math.sin(clock.elapsedTime * 0.2) * 0.12;
+    if (sway.current) {
+      sway.current.rotation.y = Math.sin(clock.elapsedTime * 0.2) * 0.12;
     }
+    // las velas crecen en cascada cuando la cámara llega a la estación
+    const s = stationCoord(progress.get());
+    candles.current.forEach((c, i) => {
+      if (!c) return;
+      const grow = smoothstep((s - 1.45 - i * 0.022) / 0.3);
+      c.scale.y = Math.max(grow, 0.001);
+    });
   });
 
   return (
     <group position={[STATION_GAP * 2, 0, 0]}>
-      <group ref={group} position={[0, -1.6, 0]}>
+      <group ref={sway} position={[0, -1.6, 0]}>
         {CANDLES.map(([open, close], i) => {
           const up = close >= open;
           const body = Math.abs(close - open);
@@ -239,13 +470,19 @@ function TradingStation() {
           const x = (i - (CANDLES.length - 1) / 2) * 0.52;
           const color = up ? "#10b981" : "#f43f5e";
           return (
-            <group key={i} position={[x, 0, 0]}>
+            <group
+              key={i}
+              position={[x, 0, 0]}
+              ref={(el) => {
+                candles.current[i] = el;
+              }}
+            >
               <mesh position={[0, mid, 0]}>
                 <boxGeometry args={[0.3, Math.max(body, 0.12), 0.3]} />
                 <meshStandardMaterial
                   color={color}
                   emissive={color}
-                  emissiveIntensity={0.45}
+                  emissiveIntensity={1.2}
                   metalness={0.4}
                   roughness={0.4}
                 />
@@ -255,21 +492,33 @@ function TradingStation() {
                 <meshStandardMaterial
                   color={color}
                   emissive={color}
-                  emissiveIntensity={0.6}
+                  emissiveIntensity={1.8}
                   transparent
-                  opacity={0.8}
+                  opacity={0.85}
                 />
               </mesh>
             </group>
           );
         })}
+        <Line
+          points={PRICE_POINTS}
+          color="#34d399"
+          lineWidth={2.5}
+          transparent
+          opacity={0.85}
+        />
         <gridHelper
-          args={[12, 20, "#f59e0b", "#27272a"]}
+          args={[12, 20, "#92600a", "#1c1c20"]}
           position={[0, -0.05, 0]}
         />
       </group>
-      <pointLight position={[0, 4, 4]} intensity={45} distance={15} color="#f59e0b" />
-      <Sparkles count={45} scale={[10, 5, 5]} size={2} speed={0.3} color="#fbbf24" />
+      <pointLight
+        position={[0, 4, 4]}
+        intensity={45}
+        distance={15}
+        color="#f59e0b"
+      />
+      <Sparkles count={50} scale={[10, 6, 6]} size={2} speed={0.3} color="#fbbf24" />
     </group>
   );
 }
@@ -279,13 +528,26 @@ function TradingStation() {
 function Scene({ progress }: { progress: MotionValue<number> }) {
   return (
     <>
-      <fog attach="fog" args={["#07070f", 13, 40]} />
-      <ambientLight intensity={0.5} />
-      <Stars radius={90} depth={50} count={2500} factor={4} saturation={0} fade />
+      <fog attach="fog" args={["#07070f", 13, 42]} />
+      <ambientLight intensity={0.3} />
+      <Stars radius={90} depth={50} count={3000} factor={4} saturation={0} fade />
       <CameraRig progress={progress} />
+      <WarpLines progress={progress} />
+      <GateRings x={STATION_GAP * 0.5} color="#22d3ee" />
+      <GateRings x={STATION_GAP * 1.5} color="#fbbf24" />
       <TallerStation />
       <OrionStation />
-      <TradingStation />
+      <TradingStation progress={progress} />
+      <EffectComposer>
+        <Bloom
+          intensity={1.15}
+          luminanceThreshold={0.18}
+          luminanceSmoothing={0.85}
+          mipmapBlur
+        />
+        <ChromaticAberration offset={new THREE.Vector2(0.0012, 0.0006)} />
+        <Noise opacity={0.04} />
+      </EffectComposer>
     </>
   );
 }
@@ -351,16 +613,26 @@ function ChapterOverlay({
   progress: MotionValue<number>;
 }) {
   const [a, b, c, d] = chapter.range;
-  const opacity = useTransform(progress, [a, b, c, d], [0, 1, 1, d === 1 ? 1 : 0]);
+  const opacity = useTransform(
+    progress,
+    [a, b, c, d],
+    [0, 1, 1, d === 1 ? 1 : 0]
+  );
   const x = useTransform(
     progress,
     [a, b],
-    chapter.side === "left" ? [-50, 0] : [50, 0]
+    chapter.side === "left" ? [-60, 0] : [60, 0]
   );
+  const filter = useTransform(
+    progress,
+    [a, b],
+    ["blur(14px)", "blur(0px)"]
+  );
+  const scale = useTransform(progress, [a, b], [0.92, 1]);
 
   return (
     <motion.div
-      style={{ opacity, x }}
+      style={{ opacity, x, filter, scale }}
       className={`absolute top-1/2 -translate-y-1/2 max-w-xs md:max-w-sm pointer-events-none ${
         chapter.side === "left"
           ? "left-6 md:left-20"
@@ -368,7 +640,7 @@ function ChapterOverlay({
       }`}
     >
       <span
-        className={`block text-7xl md:text-8xl font-bold ${chapter.accent} opacity-25 leading-none mb-2 select-none`}
+        className={`block text-7xl md:text-9xl font-bold ${chapter.accent} opacity-25 leading-none mb-2 select-none`}
       >
         {chapter.number}
       </span>
@@ -377,7 +649,7 @@ function ChapterOverlay({
       >
         {chapter.status}
       </span>
-      <h3 className="text-4xl md:text-5xl font-bold text-white mb-3">
+      <h3 className="text-4xl md:text-6xl font-bold text-white mb-3">
         {chapter.title}
       </h3>
       <p className="text-white/60 text-sm md:text-base leading-relaxed mb-3">
@@ -421,14 +693,20 @@ export default function Showcase3D() {
   const hintOpacity = useTransform(scrollYProgress, [0.03, 0.1], [1, 0]);
   const ctaOpacity = useTransform(scrollYProgress, [0.88, 0.96], [0, 1]);
   const railScale = scrollYProgress;
+  // tinte ambiental que acompaña la estación actual
+  const wash = useTransform(
+    scrollYProgress,
+    [0.12, 0.5, 0.88],
+    ["rgba(139, 92, 246, 0.08)", "rgba(6, 182, 212, 0.08)", "rgba(245, 158, 11, 0.08)"]
+  );
 
   return (
-    <section ref={sectionRef} id="showcase" className="relative h-[400vh]">
+    <section ref={sectionRef} id="showcase" className="relative h-[450vh]">
       <div className="sticky top-0 h-screen overflow-hidden">
         {mounted && (
           <Canvas
             camera={{ position: [0, 1.1, 7.5], fov: 50 }}
-            dpr={[1, 1.75]}
+            dpr={[1, 1.5]}
             gl={{ antialias: true, alpha: true }}
             className="absolute inset-0"
           >
@@ -436,7 +714,11 @@ export default function Showcase3D() {
           </Canvas>
         )}
 
-        {/* viñeta para integrar el canvas con el fondo de la página */}
+        {/* tinte de color según estación + viñeta para integrar con la página */}
+        <motion.div
+          style={{ background: wash }}
+          className="absolute inset-0 pointer-events-none mix-blend-screen"
+        />
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_55%,#07070f_100%)]" />
         <div className="absolute top-0 inset-x-0 h-24 bg-gradient-to-b from-[#07070f] to-transparent pointer-events-none" />
         <div className="absolute bottom-0 inset-x-0 h-24 bg-gradient-to-t from-[#07070f] to-transparent pointer-events-none" />
@@ -450,13 +732,17 @@ export default function Showcase3D() {
             Recorrido 3D
           </p>
           <p className="text-white/40 text-sm">
-            Scrolleá para viajar entre proyectos ↓
+            Scrolleá para iniciar el viaje ↓
           </p>
         </motion.div>
 
         {/* capítulos */}
         {CHAPTERS.map((c) => (
-          <ChapterOverlay key={c.number} chapter={c} progress={scrollYProgress} />
+          <ChapterOverlay
+            key={c.number}
+            chapter={c}
+            progress={scrollYProgress}
+          />
         ))}
 
         {/* riel de progreso */}
