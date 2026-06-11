@@ -1,6 +1,7 @@
 "use client";
 
 import { Zap, Brain, Users, Rocket } from "lucide-react";
+import Reveal from "./Reveal";
 
 const values = [
   {
@@ -31,7 +32,7 @@ export default function About() {
       <div className="max-w-6xl mx-auto">
         <div className="grid md:grid-cols-2 gap-16 items-center">
           {/* Text */}
-          <div>
+          <Reveal>
             <p className="text-sm text-cyan-400 font-medium tracking-widest uppercase mb-3">
               Quién soy
             </p>
@@ -72,13 +73,14 @@ export default function About() {
                 Ver proyectos
               </a>
             </div>
-          </div>
+          </Reveal>
 
           {/* Values grid */}
           <div className="grid grid-cols-2 gap-4">
-            {values.map((v) => (
-              <div
+            {values.map((v, idx) => (
+              <Reveal
                 key={v.title}
+                delay={0.15 + idx * 0.1}
                 className="p-5 rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
               >
                 <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500/20 to-cyan-500/20 flex items-center justify-center text-violet-400 mb-3">
@@ -88,7 +90,7 @@ export default function About() {
                   {v.title}
                 </h3>
                 <p className="text-white/45 text-xs leading-relaxed">{v.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>

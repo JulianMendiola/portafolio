@@ -1,5 +1,7 @@
 "use client";
 
+import Reveal from "./Reveal";
+
 const skillGroups = [
   {
     category: "Frontend",
@@ -33,7 +35,7 @@ export default function Skills() {
   return (
     <section id="skills" className="py-28 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
+        <Reveal className="text-center mb-16">
           <p className="text-sm text-pink-400 font-medium tracking-widest uppercase mb-3">
             Mi stack
           </p>
@@ -43,12 +45,13 @@ export default function Skills() {
           <p className="text-white/50 text-lg max-w-xl mx-auto">
             Las herramientas que uso para construir productos rápido y bien.
           </p>
-        </div>
+        </Reveal>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {skillGroups.map((group) => (
-            <div
+          {skillGroups.map((group, idx) => (
+            <Reveal
               key={group.category}
+              delay={idx * 0.1}
               className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 hover:bg-white/[0.05] transition-colors"
             >
               <div
@@ -66,12 +69,15 @@ export default function Skills() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </Reveal>
           ))}
         </div>
 
         {/* AI callout */}
-        <div className="mt-10 p-6 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 to-cyan-500/10 text-center">
+        <Reveal
+          delay={0.15}
+          className="mt-10 p-6 rounded-2xl border border-violet-500/20 bg-gradient-to-r from-violet-500/10 to-cyan-500/10 text-center"
+        >
           <p className="text-white/80 text-base">
             <span className="font-bold text-white">
               IA integrada en todo el proceso
@@ -79,7 +85,7 @@ export default function Skills() {
             — desde el diseño hasta el deploy. No es un truco, es parte de cómo
             trabajo.
           </p>
-        </div>
+        </Reveal>
       </div>
     </section>
   );

@@ -1,5 +1,6 @@
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
+import Marquee from "@/components/Marquee";
 import Showcase3D from "@/components/Showcase3D";
 import Projects from "@/components/Projects";
 import About from "@/components/About";
@@ -13,6 +14,7 @@ export default function Home() {
       <Navbar />
       <main>
         <Hero />
+        <Marquee />
         <Showcase3D />
         <Projects />
         <About />

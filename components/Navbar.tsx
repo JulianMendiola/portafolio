@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
+import Magnetic from "./Magnetic";
 
 const links = [
   { label: "Inicio", href: "#hero" },
@@ -43,20 +44,23 @@ export default function Navbar() {
             <li key={l.href}>
               <a
                 href={l.href}
-                className="text-sm text-white/60 hover:text-white transition-colors"
+                className="relative text-sm text-white/60 hover:text-white transition-colors group"
               >
                 {l.label}
+                <span className="absolute -bottom-1 left-0 h-px w-0 bg-gradient-to-r from-violet-400 to-cyan-400 transition-all duration-300 group-hover:w-full" />
               </a>
             </li>
           ))}
         </ul>
 
-        <a
-          href="#contact"
-          className="hidden md:inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-violet-500 to-cyan-500 text-white hover:opacity-90 transition-opacity"
-        >
-          Hablemos
-        </a>
+        <Magnetic className="hidden md:inline-block" strength={0.3}>
+          <a
+            href="#contact"
+            className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-gradient-to-r from-violet-500 to-cyan-500 text-white hover:opacity-90 transition-opacity"
+          >
+            Hablemos
+          </a>
+        </Magnetic>
 
         {/* Mobile toggle */}
         <button

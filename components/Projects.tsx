@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink, Code2, Wrench, TrendingUp, Bot } from "lucide-react";
+import Reveal from "./Reveal";
 
 const projects = [
   {
@@ -48,7 +49,7 @@ export default function Projects() {
   return (
     <section id="projects" className="py-28 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
+        <Reveal className="text-center mb-16">
           <p className="text-sm text-violet-400 font-medium tracking-widest uppercase mb-3">
             Lo que construyo
           </p>
@@ -59,16 +60,30 @@ export default function Projects() {
             Productos digitales reales, no demos. Cada proyecto resuelve un
             problema concreto.
           </p>
-        </div>
+        </Reveal>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((p) => (
+          {projects.map((p, idx) => (
+            <Reveal key={p.title} delay={idx * 0.12} className="flex">
             <article
-              key={p.title}
-              className={`relative group rounded-2xl border ${p.borderColor} bg-white/[0.03] hover:bg-white/[0.06] transition-all duration-300 overflow-hidden flex flex-col`}
+              onMouseMove={(e) => {
+                const el = e.currentTarget;
+                const r = el.getBoundingClientRect();
+                el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+                el.style.setProperty("--my", `${e.clientY - r.top}px`);
+              }}
+              className={`relative group rounded-2xl border ${p.borderColor} bg-white/[0.03] hover:bg-white/[0.06] transition-all duration-300 overflow-hidden flex flex-col w-full`}
             >
               <div
                 className={`absolute inset-0 bg-gradient-to-br ${p.gradient} pointer-events-none`}
+              />
+              {/* spotlight que sigue al mouse */}
+              <div
+                className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                style={{
+                  background:
+                    "radial-gradient(360px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,0.07), transparent 65%)",
+                }}
               />
 
               <div className="relative p-6 flex flex-col flex-1">
@@ -119,6 +134,7 @@ export default function Projects() {
                 </div>
               </div>
             </article>
+            </Reveal>
           ))}
         </div>
       </div>

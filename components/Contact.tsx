@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Send, Mail, Code2, Briefcase, MessageCircle } from "lucide-react";
+import Reveal from "./Reveal";
 
 const socials = [
   {
@@ -54,7 +55,7 @@ export default function Contact() {
   return (
     <section id="contact" className="py-28 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
+        <Reveal className="text-center mb-16">
           <p className="text-sm text-emerald-400 font-medium tracking-widest uppercase mb-3">
             Hablemos
           </p>
@@ -64,10 +65,11 @@ export default function Contact() {
           <p className="text-white/50 text-lg max-w-xl mx-auto">
             ¿Tenés un proyecto en mente o querés contratarme? Escribime.
           </p>
-        </div>
+        </Reveal>
 
         <div className="grid md:grid-cols-2 gap-10 max-w-4xl mx-auto">
           {/* Form */}
+          <Reveal>
           <form
             onSubmit={handleSubmit}
             className="space-y-4 bg-white/[0.03] border border-white/8 rounded-2xl p-8"
@@ -120,9 +122,10 @@ export default function Contact() {
               {sent ? "¡Mensaje enviado!" : (<><Send size={15} /> Enviar mensaje</>)}
             </button>
           </form>
+          </Reveal>
 
           {/* Socials */}
-          <div className="flex flex-col justify-center gap-4">
+          <Reveal delay={0.15} className="flex flex-col justify-center gap-4">
             <p className="text-white/60 text-base mb-2">
               También podés encontrarme en:
             </p>
@@ -145,7 +148,7 @@ export default function Contact() {
                 </div>
               </a>
             ))}
-          </div>
+          </Reveal>
         </div>
       </div>
     </section>
