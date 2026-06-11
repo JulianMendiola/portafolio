@@ -1,14 +1,14 @@
 "use client";
 
-import { ExternalLink, Code2, Wrench, TrendingUp } from "lucide-react";
+import { ExternalLink, Code2, Wrench, TrendingUp, Bot } from "lucide-react";
 
 const projects = [
   {
     title: "TallerPro",
     description:
-      "Sistema de gestión digital para un taller mecánico familiar. Nació de la necesidad real de pasar de papel y Excel a una plataforma centralizada: control de órdenes de trabajo, clientes, historial de vehículos y seguimiento del negocio.",
-    tags: ["Next.js", "TypeScript", "Tailwind", "IA"],
-    status: "En desarrollo",
+      "Sistema de gestión digital para un taller mecánico familiar, en uso real todos los días. Órdenes de trabajo, clientes, historial de vehículos, caja diaria con resumen de ingresos y egresos, y avisos a clientes por WhatsApp. Pasó del papel y Excel a una plataforma centralizada.",
+    tags: ["Next.js", "TypeScript", "Supabase", "Tailwind"],
+    status: "En uso",
     statusColor: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
     icon: <Wrench size={20} />,
     gradient: "from-violet-500/20 via-violet-500/5 to-transparent",
@@ -19,13 +19,26 @@ const projects = [
   {
     title: "Orion",
     description:
-      "Analista financiero potenciado por IA. Interpreta datos del mercado, genera reportes y toma el rol de un asesor financiero inteligente que te ayuda a entender y tomar mejores decisiones con tu plata.",
-    tags: ["IA", "Next.js", "Finanzas", "Claude AI"],
+      "Plataforma de inversiones con IA pensada para el inversor argentino. Dashboard con mercados en tiempo real, seguimiento de portfolio, señales técnicas, backtesting y chat con un analista financiero potenciado por Claude que te ayuda a tomar mejores decisiones con tu plata.",
+    tags: ["React", "Node.js", "Claude AI", "Finanzas"],
     status: "En construcción",
     statusColor: "text-amber-400 bg-amber-400/10 border-amber-400/20",
     icon: <TrendingUp size={20} />,
     gradient: "from-cyan-500/20 via-cyan-500/5 to-transparent",
     borderColor: "border-cyan-500/20 hover:border-cyan-500/50",
+    link: "#",
+    github: null,
+  },
+  {
+    title: "TradingBot",
+    description:
+      "Bot de trading algorítmico en Python que opera con capital simulado sobre datos reales de mercado: futuros, oro, petróleo y Bitcoin. Combina tres estrategias (reversión a la media, breakout y seguimiento de tendencia) con gestión de riesgo automática y dashboard web propio.",
+    tags: ["Python", "Trading algorítmico", "Paper trading"],
+    status: "Activo",
+    statusColor: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+    icon: <Bot size={20} />,
+    gradient: "from-amber-500/20 via-amber-500/5 to-transparent",
+    borderColor: "border-amber-500/20 hover:border-amber-500/50",
     link: "#",
     github: null,
   },
@@ -48,7 +61,7 @@ export default function Projects() {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((p) => (
             <article
               key={p.title}
